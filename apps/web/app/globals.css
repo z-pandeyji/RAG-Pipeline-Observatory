@@ -736,6 +736,16 @@ label {
   transition: width 240ms ease;
 }
 
+.progress-fill-indeterminate {
+  animation: progress-sweep 1.6s ease-in-out infinite;
+  width: 38%;
+}
+
+@keyframes progress-sweep {
+  0%   { transform: translateX(-160%); }
+  100% { transform: translateX(380%); }
+}
+
 .progress-label {
   color: var(--color-muted);
   font-size: 0.76rem;
@@ -896,6 +906,26 @@ label {
   height: 24px;
   justify-content: center;
   width: 24px;
+}
+
+.generation-step-active span {
+  animation: step-pulse 0.9s ease-in-out infinite alternate;
+  background: var(--color-accent);
+  box-shadow: 0 0 0 4px rgb(167 243 208 / 28%);
+  color: var(--color-primary);
+}
+
+.generation-step-done span {
+  background: var(--color-success);
+}
+
+.generation-step-pending {
+  opacity: 0.38;
+}
+
+@keyframes step-pulse {
+  from { box-shadow: 0 0 0 2px rgb(167 243 208 / 18%); }
+  to   { box-shadow: 0 0 0 6px rgb(167 243 208 / 36%); }
 }
 
 .generation-step p {
