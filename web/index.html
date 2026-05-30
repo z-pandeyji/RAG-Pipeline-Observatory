@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Senior RAG Quiz Lab</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="workspace">
+        <div class="panel upload-panel">
+          <div>
+            <p class="eyebrow">Local PDF RAG</p>
+            <h1>Quiz Generator</h1>
+          </div>
+          <label class="file-drop">
+            <input id="pdfInput" type="file" accept="application/pdf" />
+            <span id="fileLabel">Choose a small PDF</span>
+          </label>
+          <div class="controls">
+            <input id="goalInput" value="Generate a balanced comprehension quiz." />
+            <select id="difficultyInput">
+              <option value="medium">Medium</option>
+              <option value="easy">Easy</option>
+              <option value="hard">Hard</option>
+            </select>
+            <input id="countInput" type="number" min="3" max="20" value="8" />
+            <button id="generateButton">Generate</button>
+          </div>
+          <p id="statusLine" class="status">Upload a PDF to begin.</p>
+        </div>
+
+        <div class="panel quiz-panel">
+          <h2>Quiz</h2>
+          <div id="quizOutput" class="quiz-empty">No quiz generated yet.</div>
+        </div>
+      </section>
+
+      <aside class="trace-panel">
+        <h2>RAG Trace</h2>
+        <div id="traceOutput" class="trace-list"></div>
+      </aside>
+    </main>
+    <script src="/main.js"></script>
+  </body>
+</html>

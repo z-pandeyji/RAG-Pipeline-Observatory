@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.env
+*.env.local
+
+# Node
+node_modules/
+.next/
+tsconfig.tsbuildinfo
+
+# OS
+.DS_Store
+
+# Build artifacts / blobs
+secure_rag_learning_api/blobs/
+apps/web/.env.local
