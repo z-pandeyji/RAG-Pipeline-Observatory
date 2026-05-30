@@ -1,149 +1,192 @@
-# Senior RAG Quiz Lab
+# RAG Pipeline Observatory
 
-Local-first RAG quiz generator for PDF ingestion, structured as the first slice of a security-aware enterprise RAG system. The backend never calls a hosted model provider; generation goes to an LM Studio OpenAI-compatible endpoint running Gemma locally.
+A full-stack, local-first Retrieval-Augmented Generation platform for building private AI learning workspaces. Upload PDFs, index them into a vector store, generate evidence-grounded quizzes, and chat with your documents — all running locally with no hosted model providers.
 
-## What Works Now
+---
 
-- Upload one small PDF.
-- Validate the file as a real PDF before parsing.
-- Extract text page by page.
-- Chunk, index, and retrieve locally.
-- Send only selected context chunks to LM Studio for quiz generation.
-- Show a frontend trace of each RAG step: extraction, chunking, retrieval, prompt preview, and model timing.
+## Features
+
+### 🔬 Advanced RAG Pipeline
+- **Hybrid retrieval** — BM25 lexical search fused with Qdrant vector search via Reciprocal Rank Fusion (RRF)
+- **Pre-retrieval** — query rewriting (LLM reformulates the query for better recall) and HyDE (Hypothetical Document Embeddings, toggleable)
+- **Post-retrieval** — score-filter reranker with semantic deduplication; filters low-signal chunks before generation
+- **Observability** — every pipeline stage (ingest, chunk, embed, retrieve, rerank, generate) logged as a tool run; visible in the Pipeline Observatory
+
+### 📄 PDF Ingestion
+- Upload PDFs up to 12 MB
+- Semantic chunking with paragraph-aware overlap
+- Embeddings generated locally via Ollama or LM Studio
+- Chunks stored in PostgreSQL, vectors stored in Qdrant
+
+### 🧠 Quiz Generation
+- Multiple choice (MCQ), True/False, short answer, and mixed modes
+- Difficulty levels: easy, medium, hard
+- Answers locked until the user submits an attempt
+- Retry/repair logic for malformed LLM output
+- Quiz history persisted to the backend; answers and attempts persist in localStorage
+
+### 💬 Chat
+- Grounded Q&A over indexed PDFs
+- Markdown rendered responses (headings, tables, code, lists)
+- Evidence citations shown per answer
+- Message history persists in localStorage per workspace
+
+### 🗺 RAG Map & Pipeline Observatory
+- Interactive visual graph of the RAG pipeline stages with live node status
+- Backend Timeline shows every tool run with status, duration, and expandable output
+- RAG Architecture card shows live model, embedding model, dimensions, and vector store config
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Frontend | Next.js 15, React 19, TypeScript |
+| Backend | FastAPI, Python 3.11, SQLAlchemy (async) |
+| Vector DB | Qdrant |
+| Relational DB | PostgreSQL |
+| Embeddings | Ollama (`bge-m3`) or LM Studio |
+| LLM | Ollama (`gemma4:latest`) or LM Studio |
+| Chunking | Semantic paragraph-aware sliding window |
+
+---
 
 ## Quick Start
+
+### 1. Prerequisites
+
+- [Ollama](https://ollama.ai) running locally with models pulled:
+  ```bash
+  ollama pull gemma4
+  ollama pull bge-m3
+  ```
+- Docker (for PostgreSQL + Qdrant):
+  ```bash
+  cd infra && docker compose up -d
+  ```
+
+### 2. Backend
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python3 -m pip install -e .
+pip install -e .
 cp .env.example .env
-uvicorn app.main:app --reload --port 4101
+# Edit .env — set LLM_PROVIDER=ollama, EMBEDDING_PROVIDER=ollama
+cd apps/api
+uvicorn app.main:app --reload --port 8000
 ```
 
-Open `http://127.0.0.1:4101`.
+### 3. Frontend
 
-LM Studio should be running with a Gemma model loaded and the local server enabled. Default URL:
-
-```text
-http://127.0.0.1:1234/v1/chat/completions
+```bash
+cd apps/web
+npm install
+cp .env.example .env.local
+# .env.local: NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+npm run dev
 ```
 
-## Security Shape
+Open [http://localhost:3000](http://localhost:3000).
 
-- Files are content-addressed by a server-side UUID, not by user-controlled names.
-- Uploads are size-limited.
-- PDF magic bytes are checked before parsing.
-- Path traversal is avoided by never using the uploaded filename for storage.
-- Extracted content is kept local in memory for this first slice.
-- The model receives only top retrieved chunks, not the whole document.
-- The generation prompt instructs the model to refuse unsupported quiz questions.
-- The trace shown to the user is redacted and bounded.
+---
 
-## Architecture
+## Environment Reference
 
-Detailed architecture docs:
+Key variables in `.env.example`:
 
-- [RAG System Architecture](docs/architecture.md)
-- [ADR-0001: Secure Local-First RAG Pipeline](docs/adr/0001-secure-rag-pipeline.md)
-- [ADR-0002: Local-First Storage And Indexing](docs/adr/0002-storage-and-indexing.md)
-- [ADR-0003: RAG Testing Strategy](docs/adr/0003-testing-strategy.md)
-- [Testing Strategy](docs/testing-strategy.md)
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LLM_PROVIDER` | `ollama` | `ollama` or `lmstudio` |
+| `LLM_MODEL` | `gemma4:latest` | Model name for chat/generation |
+| `EMBEDDING_PROVIDER` | `ollama` | `ollama` or `lmstudio` |
+| `EMBEDDING_MODEL` | `bge-m3:latest` | Model name for embeddings |
+| `QDRANT_URL` | `http://127.0.0.1:6333` | Qdrant instance URL |
+| `DATABASE_URL` | `postgresql+asyncpg://...` | PostgreSQL connection string |
+| `QUIZ_TOP_K` | `8` | Chunks retrieved per quiz generation |
+| `QUERY_REWRITING_ENABLED` | `true` | Enable LLM query rewriting pre-retrieval |
+| `HYBRID_SEARCH_ENABLED` | `true` | Enable BM25 + vector RRF fusion |
+| `RERANK_MIN_SCORE` | `0.05` | Cosine similarity cutoff for post-retrieval filter |
 
-Target project structure:
-
-```text
-User
-  -> API Gateway + Auth + Rate Limits
-  -> Query Security Layer
-     - prompt-injection detection
-     - PII / secrets filtering
-     - tenant permission check
-  -> Query Understanding
-     - rewrite query
-     - detect intent
-     - route to correct knowledge source
-  -> Hybrid Retrieval
-     - BM25 keyword search
-     - vector search
-     - metadata filters
-     - tenant / role filters
-  -> Reranking
-     - cross-encoder / LLM reranker
-     - keep top 5-10 chunks only
-  -> Context Builder
-     - deduplicate chunks
-     - compress/summarize if needed
-     - attach citations
-  -> LLM Answer Generation
-     - grounded-only prompt
-     - cite sources
-     - refuse if evidence is insufficient
-  -> Output Guardrails
-     - hallucination check
-     - sensitive data check
-     - unsafe output check
-  -> Observability + Evaluation
-     - retrieval metrics
-     - answer quality
-     - latency/cost
-     - security events
-```
-
-Current implemented slice:
-
-```text
-Browser
-  -> FastAPI API boundary
-  -> PDF validator
-  -> PDF text extractor
-  -> overlapping chunker
-  -> in-memory document store
-  -> local BM25-style retriever
-  -> bounded prompt compiler
-  -> LM Studio Gemma endpoint
-  -> quiz JSON parser
-  -> trace projection
-```
-
-The current retriever is a local BM25-style scorer to keep the initial project dependency-light and stable. PostgreSQL plus pgvector is the selected persistence and vector-search target; the current in-memory store will be replaced once repository tests are in place.
+---
 
 ## Project Layout
 
-```text
-app/
-  main.py          FastAPI app setup and static frontend mount.
-  routes.py        Upload and quiz API endpoints.
-  security.py      Upload size checks, PDF magic-byte validation, document IDs.
-  pdf_pipeline.py  PDF text extraction and overlapping chunking.
-  retrieval.py     Local BM25-style lexical retrieval.
-  generator.py     Grounded prompt construction, LM Studio call, JSON parsing.
-  store.py         Current in-memory document storage and per-document index.
-  storage/         PostgreSQL and pgvector schema artifacts.
-  models.py        Pydantic request, response, trace, and chunk models.
-  config.py        Environment-backed runtime settings.
-web/
-  index.html       Browser UI.
-  main.js          Upload, quiz generation, and trace rendering.
-  styles.css       UI styling.
-pyproject.toml     Python package metadata and dependencies.
-README.md          Project overview and operating guide.
+```
+apps/
+  api/                  FastAPI backend
+    app/
+      core/             Config (Pydantic Settings)
+      db/               SQLAlchemy models + session
+      repositories/     Data access layer (documents, chunks, quizzes, citations)
+      routers/          API endpoints (ingestion, generation, quizzes, retrieval)
+      schemas/          Pydantic request/response models
+      services/
+        ingestion.py    PDF → extract → chunk → embed → upsert
+        retrieval.py    Query embed → Qdrant search → hybrid BM25 fusion → rerank
+        generation.py   Context build → LLM call → citation store
+        quizzes.py      Quiz generation with validation + repair
+        query_rewriting.py  Pre-retrieval LLM query reformulation
+        hyde.py         Hypothetical Document Embeddings
+        bm25_index.py   In-memory BM25 + RRF fusion
+        reranking/      Pluggable reranker (score_filter, vector_order)
+        embeddings/     Ollama + LM Studio embedding providers
+        llm/            Ollama + LM Studio chat providers
+  web/                  Next.js 15 frontend
+    app/
+      page.tsx          RAG Pipeline Observatory (main lab page)
+      globals.css       Design system + lab dark theme
+    features/
+      chat/             Chat panel with markdown rendering + localStorage
+      quiz/             Quiz lab with animated generation stepper
+      citations/        Evidence citation cards
+      audit/            Full RAG audit view (pipeline + chunk browser + trace)
+    components/ui/      Shared UI: ProgressBar, ChatSkeleton, StatusBadge, etc.
+    lib/api-client.ts   Typed API client
+    types/api.ts        Shared TypeScript types
+app/                    Simple legacy PDF quiz backend (prototype)
+web/                    Simple legacy vanilla JS frontend (prototype)
+infra/
+  docker-compose.yml    PostgreSQL + Qdrant local stack
+tests/                  Python test suite
+pyproject.toml          Python package metadata
 ```
 
-## Testing
+---
 
-Run the current deterministic test suite with:
+## Running Tests
 
 ```bash
-python3 -m unittest discover -s tests
+source .venv/bin/activate
+python3 -m pytest tests/ -v
 ```
 
-The test strategy and future coverage plan are documented in [Testing Strategy](docs/testing-strategy.md).
+---
 
-## Next Slices
+## Architecture
 
-1. Add repository tests and harden PostgreSQL metadata, pgvector embeddings, and content-addressed blobs.
-2. Add image OCR through a local model or Tesseract sandbox.
-3. Add video ingestion with audio extraction, transcript segmentation, and frame OCR.
-4. Add multi-tenant isolation, auth, and per-document authorization checks.
-5. Replace lexical retrieval with hybrid retrieval: pgvector embeddings plus BM25 plus reranking.
+```
+PDF Upload
+  → Validate (size + magic bytes)
+  → Semantic Chunking (paragraph-aware, overlapping)
+  → Embedding Generation (Ollama bge-m3 / LM Studio)
+  → Qdrant Vector Upsert + PostgreSQL chunk store
+
+Query / Generate
+  → Query Rewriting (LLM reformulates for recall)  [pre-retrieval]
+  → HyDE (optional hypothetical passage embedding)  [pre-retrieval]
+  → Qdrant Dense Vector Search
+  → BM25 Lexical Search (in-memory, document-scoped)
+  → RRF Score Fusion (Reciprocal Rank Fusion)
+  → Score-Filter Reranker (cosine threshold + dedup) [post-retrieval]
+  → Context Builder (token budget, citations)
+  → LLM Generation (Ollama gemma4 / LM Studio)
+  → Output + Citation Storage
+```
+
+---
+
+## License
+
+MIT
