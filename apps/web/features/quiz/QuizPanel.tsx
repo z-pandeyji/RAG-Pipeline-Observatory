@@ -43,6 +43,8 @@ export function QuizPanel({
     () => documents.find((document) => document.id === documentId) ?? null,
     [documentId, documents]
   );
+  const answersKey = selectedQuizId ? `quiz_answers_${selectedQuizId}` : null;
+  const attemptsKey = selectedQuizId ? `quiz_attempts_${selectedQuizId}` : null;
 
   const loadSavedQuizzes = useCallback(async () => {
     try {
@@ -79,6 +81,36 @@ export function QuizPanel({
     }
   }, [documentId, documents]);
 
+  // Restore answers + attempts from localStorage when quiz changes
+  useEffect(() => {
+    if (!answersKey || !attemptsKey) return;
+    try {
+      const savedAnswers = window.localStorage.getItem(answersKey);
+      if (savedAnswers) setAnswers(JSON.parse(savedAnswers) as Record<string, string>);
+
+      const savedAttempts = window.localStorage.getItem(attemptsKey);
+      if (savedAttempts) setAttempts(JSON.parse(savedAttempts) as AttemptsByQuestion);
+    } catch {
+      // Corrupt data — ignore
+    }
+  }, [answersKey, attemptsKey]);
+
+  // Persist answers on every change
+  useEffect(() => {
+    if (!answersKey || Object.keys(answers).length === 0) return;
+    try {
+      window.localStorage.setItem(answersKey, JSON.stringify(answers));
+    } catch { /* quota exceeded — silent */ }
+  }, [answers, answersKey]);
+
+  // Persist attempts on every change
+  useEffect(() => {
+    if (!attemptsKey || Object.keys(attempts).length === 0) return;
+    try {
+      window.localStorage.setItem(attemptsKey, JSON.stringify(attempts));
+    } catch { /* quota exceeded — silent */ }
+  }, [attempts, attemptsKey]);
+
   const GENERATION_STEPS = [
     "Retrieving evidence",
     "Building context",
@@ -101,6 +133,7 @@ export function QuizPanel({
     setIsGenerating(true);
     setError(null);
     setErrorCode(null);
+    setAnswers({});
     setAttempts({});
     try {
       const response = await apiClient.generateQuiz({
@@ -157,6 +190,8 @@ export function QuizPanel({
         setSelectedQuizId(null);
         setQuiz(null);
         window.localStorage.removeItem("selectedQuizId");
+        window.localStorage.removeItem(`quiz_answers_${quizId}`);
+        window.localStorage.removeItem(`quiz_attempts_${quizId}`);
       }
       await loadSavedQuizzes();
       await onChanged?.();
