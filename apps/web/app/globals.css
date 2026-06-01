@@ -1439,6 +1439,39 @@ body {
   min-width: 180px;
 }
 
+.quiz-loading {
+  align-items: center;
+  background: rgb(56 189 248 / 8%);
+  border: 1px solid rgb(56 189 248 / 24%);
+  border-radius: 8px;
+  color: var(--lab-text);
+  display: flex;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 12px;
+}
+
+.quiz-loading p {
+  color: var(--lab-muted);
+  margin: 4px 0 0;
+}
+
+.quiz-loading-spinner {
+  animation: quiz-spin 0.8s linear infinite;
+  border: 3px solid rgb(148 163 184 / 24%);
+  border-radius: 999px;
+  border-top-color: var(--lab-cyan);
+  flex: 0 0 auto;
+  height: 28px;
+  width: 28px;
+}
+
+@keyframes quiz-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .lab-shell input,
 .lab-shell select,
 .lab-shell textarea {
@@ -1454,8 +1487,11 @@ body {
   border-radius: 8px;
   color: var(--lab-text);
   min-height: 50px;
+  margin: 0.3rem 0;
 }
-
+.lab-shell button.mini-button {
+  min-height: 50px;
+}
 .lab-shell button:hover:not(:disabled) {
   border-color: var(--lab-cyan);
   box-shadow: 0 0 0 3px rgb(56 189 248 / 12%);
@@ -1482,6 +1518,13 @@ body {
 .pdf-row.active {
   border-color: var(--lab-cyan);
   box-shadow: inset 3px 0 0 var(--lab-cyan);
+}
+
+.pdf-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  width: 100%;
 }
 
 .mini-button {
@@ -1600,6 +1643,11 @@ body {
   border: 1px solid var(--lab-line);
   border-radius: 8px;
   padding: 12px;
+}
+
+.question-card strong {
+  margin: 0 0 1rem;
+  display: block;
 }
 
 .option-choice {

@@ -11,6 +11,14 @@ import type { Document, Quiz, QuizAttemptResponse, QuizGenerationJob, QuizGenera
 
 type AttemptsByQuestion = Record<string, QuizAttemptResponse>;
 
+const GENERATION_STEPS = [
+  "Retrieving evidence",
+  "Building context",
+  "Generating questions",
+  "Validating citations",
+  "Saving quiz"
+];
+
 export function QuizPanel({
   workspaceId,
   userId,
@@ -110,14 +118,6 @@ export function QuizPanel({
       window.localStorage.setItem(attemptsKey, JSON.stringify(attempts));
     } catch { /* quota exceeded — silent */ }
   }, [attempts, attemptsKey]);
-
-  const GENERATION_STEPS = [
-    "Retrieving evidence",
-    "Building context",
-    "Generating questions",
-    "Validating citations",
-    "Saving quiz"
-  ];
 
   useEffect(() => {
     if (!isGenerating) {

@@ -69,7 +69,7 @@ export type GenerationResponse = {
 export type QuizQuestion = {
   question_id: string;
   question: string;
-  type: "mcq" | "short_answer";
+  type: "mcq" | "short_answer" | "true_false";
   options: string[];
   citations: Citation[];
   answer_hidden: true;

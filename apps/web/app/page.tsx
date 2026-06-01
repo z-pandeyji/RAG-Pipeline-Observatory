@@ -3,13 +3,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Background, Controls, ReactFlow, type Edge, type Node } from "@xyflow/react";
 
-import { getEndpointTrace, subscribeEndpointTrace, apiClient } from "@/lib/api-client";
+import { apiClient } from "@/lib/api-client";
 import { ChatPanel } from "@/features/chat/ChatPanel";
 import type {
   Document,
   DocumentChunk,
   DocumentRagTrace,
-  EndpointTraceEntry,
   ModelHarness,
   Quiz,
   QuizAttemptResponse,
@@ -32,15 +31,14 @@ export default function DashboardPage() {
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
   const [ragTrace, setRagTrace] = useState<DocumentRagTrace | null>(null);
   const [toolRuns, setToolRuns] = useState<ToolRun[]>([]);
-  const [endpointTrace, setEndpointTrace] = useState<EndpointTraceEntry[]>([]);
   const [modelHarness, setModelHarness] = useState<ModelHarness | null>(null);
   const [activeTab, setActiveTab] = useState<LabTab>("RAG Map");
   const [filter, setFilter] = useState<"all" | "indexed" | "processing" | "failed">("all");
   const [search, setSearch] = useState("");
   const [showAllChunks, setShowAllChunks] = useState(false);
-  const [expandedChunks, setExpandedChunks] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [indexingId, setIndexingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [questionCount, setQuestionCount] = useState(3);
   const [difficulty, setDifficulty] = useState<"easy" | "medium" | "hard">("medium");
   const [quizType, setQuizType] = useState<"mcq" | "short_answer" | "true_false" | "mixed">("mcq");
@@ -50,6 +48,11 @@ export default function DashboardPage() {
   const [attempts, setAttempts] = useState<Record<string, QuizAttemptResponse>>({});
   const [busyQuiz, setBusyQuiz] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const QUIZ_LOCAL_STORAGE_KEY = "labQuiz";
+  const QUIZ_TRACE_LOCAL_STORAGE_KEY = "labQuizTrace";
+  const QUIZ_ANSWERS_LOCAL_STORAGE_KEY = "labQuizAnswers";
+  const QUIZ_ATTEMPTS_LOCAL_STORAGE_KEY = "labQuizAttempts";
 
   const selectedDocument = useMemo(
     () => documents.find((document) => document.id === selectedDocumentId) ?? null,
@@ -66,10 +69,6 @@ export default function DashboardPage() {
         return document.status === filter;
       });
   }, [documents, filter, search]);
-
-  const chunks = ragTrace?.chunks ?? [];
-  const displayedChunks = showAllChunks ? chunks : chunks.slice(0, 8);
-  const endpointCount = endpointTrace.length;
 
   const refreshWorkspace = useCallback(async () => {
     const [documentResponse, harness, runs] = await Promise.all([
@@ -112,10 +111,66 @@ export default function DashboardPage() {
   }, [modelHarness, selectedDocumentId, userId, workspaceId]);
 
   useEffect(() => {
-    const unsubscribe = subscribeEndpointTrace(() => setEndpointTrace(getEndpointTrace()));
-    setEndpointTrace(getEndpointTrace());
-    return unsubscribe;
+    try {
+      const savedQuiz = window.localStorage.getItem(QUIZ_LOCAL_STORAGE_KEY);
+      if (savedQuiz) setQuiz(JSON.parse(savedQuiz) as Quiz);
+    } catch {
+      // ignore invalid persisted quiz
+    }
+
+    try {
+      const savedTrace = window.localStorage.getItem(QUIZ_TRACE_LOCAL_STORAGE_KEY);
+      if (savedTrace) setQuizTrace(JSON.parse(savedTrace) as QuizJobTrace);
+    } catch {
+      // ignore invalid persisted trace
+    }
+
+    try {
+      const savedAnswers = window.localStorage.getItem(QUIZ_ANSWERS_LOCAL_STORAGE_KEY);
+      if (savedAnswers) setAnswers(JSON.parse(savedAnswers) as Record<string, string>);
+    } catch {
+      // ignore invalid persisted answers
+    }
+
+    try {
+      const savedAttempts = window.localStorage.getItem(QUIZ_ATTEMPTS_LOCAL_STORAGE_KEY);
+      if (savedAttempts) setAttempts(JSON.parse(savedAttempts) as Record<string, QuizAttemptResponse>);
+    } catch {
+      // ignore invalid persisted attempts
+    }
   }, []);
+
+  useEffect(() => {
+    if (quiz) {
+      window.localStorage.setItem(QUIZ_LOCAL_STORAGE_KEY, JSON.stringify(quiz));
+    } else {
+      window.localStorage.removeItem(QUIZ_LOCAL_STORAGE_KEY);
+    }
+  }, [quiz]);
+
+  useEffect(() => {
+    if (quizTrace) {
+      window.localStorage.setItem(QUIZ_TRACE_LOCAL_STORAGE_KEY, JSON.stringify(quizTrace));
+    } else {
+      window.localStorage.removeItem(QUIZ_TRACE_LOCAL_STORAGE_KEY);
+    }
+  }, [quizTrace]);
+
+  useEffect(() => {
+    if (Object.keys(answers).length > 0) {
+      window.localStorage.setItem(QUIZ_ANSWERS_LOCAL_STORAGE_KEY, JSON.stringify(answers));
+    } else {
+      window.localStorage.removeItem(QUIZ_ANSWERS_LOCAL_STORAGE_KEY);
+    }
+  }, [answers]);
+
+  useEffect(() => {
+    if (Object.keys(attempts).length > 0) {
+      window.localStorage.setItem(QUIZ_ATTEMPTS_LOCAL_STORAGE_KEY, JSON.stringify(attempts));
+    } else {
+      window.localStorage.removeItem(QUIZ_ATTEMPTS_LOCAL_STORAGE_KEY);
+    }
+  }, [attempts]);
 
   useEffect(() => {
     void refreshWorkspace().catch((caught) => setError(caught instanceof Error ? caught.message : "Could not load lab state"));
@@ -163,10 +218,38 @@ export default function DashboardPage() {
     }
   }
 
+  async function deletePdf(documentId: string) {
+    if (!window.confirm("Delete this PDF and all associated data?")) return;
+    setDeletingId(documentId);
+    setError(null);
+    try {
+      if (selectedDocumentId === documentId) {
+        setSelectedDocumentId(null);
+        setQuiz(null);
+        setQuizTrace(null);
+        setAnswers({});
+        setAttempts({});
+        window.localStorage.removeItem(QUIZ_LOCAL_STORAGE_KEY);
+        window.localStorage.removeItem(QUIZ_TRACE_LOCAL_STORAGE_KEY);
+        window.localStorage.removeItem(QUIZ_ANSWERS_LOCAL_STORAGE_KEY);
+        window.localStorage.removeItem(QUIZ_ATTEMPTS_LOCAL_STORAGE_KEY);
+      }
+      await apiClient.deleteDocument(documentId, workspaceId, userId);
+      await refreshWorkspace();
+      await refreshRagTrace();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "PDF deletion failed");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   async function generateQuiz() {
     if (!selectedDocumentId) return;
     setBusyQuiz(true);
     setError(null);
+    setQuiz(null);
+    setQuizTrace(null);
     setAttempts({});
     setAnswers({});
     try {
@@ -181,7 +264,6 @@ export default function DashboardPage() {
       if (response.quiz) setQuiz(response.quiz);
       const trace = await apiClient.getQuizGenerationJobTrace(response.job.id, workspaceId, userId);
       setQuizTrace(trace);
-      setActiveTab("Prompt Trace");
       await refreshWorkspace();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Quiz generation failed");
@@ -259,19 +341,32 @@ export default function DashboardPage() {
                 >
                   <span>{document.filename}</span>
                   <small>{document.status} · {document.chunk_count ?? 0} chunks</small>
-                  {document.status !== "indexed" ? (
+                  <div className="pdf-actions">
+                    {document.status !== "indexed" ? (
+                      <button
+                        className="mini-button"
+                        disabled={indexingId === document.id}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void indexPdf(document.id);
+                        }}
+                        type="button"
+                      >
+                        {indexingId === document.id ? "Indexing" : "Index"}
+                      </button>
+                    ) : null}
                     <button
                       className="mini-button"
-                      disabled={indexingId === document.id}
+                      disabled={deletingId === document.id}
                       onClick={(event) => {
                         event.stopPropagation();
-                        void indexPdf(document.id);
+                        void deletePdf(document.id);
                       }}
                       type="button"
                     >
-                      {indexingId === document.id ? "Indexing" : "Index"}
+                      {deletingId === document.id ? "Deleting..." : "Delete"}
                     </button>
-                  ) : null}
+                  </div>
                 </div>
               ))}
               {visibleDocuments.length === 0 ? <p className="muted-line">No PDF matches this view.</p> : null}
@@ -301,7 +396,7 @@ export default function DashboardPage() {
             <RagMap modelHarness={modelHarness} trace={ragTrace} showAllChunks={showAllChunks} setShowAllChunks={setShowAllChunks} />
           ) : null}
           {activeTab === "Dataset" ? (
-            <DatasetPanel chunks={displayedChunks} expanded={expandedChunks} quizTrace={quizTrace} setExpanded={setExpandedChunks} setShowAllChunks={setShowAllChunks} showAllChunks={showAllChunks} trace={ragTrace} />
+            <DatasetPanel quizTrace={quizTrace} trace={ragTrace} />
           ) : null}
           {activeTab === "Quiz Lab" ? (
             <QuizLab
@@ -347,9 +442,7 @@ export default function DashboardPage() {
             ) : null}
           </InfoCard>
           <Timeline runs={ragTrace?.tool_runs.length ? ragTrace.tool_runs : toolRuns} />
-          {/* <EndpointTrace entries={endpointTrace} /> */}
           <SecurityPanel checks={ragTrace?.security_checks ?? quizTrace?.security_checks} />
-          {/* <ModelHarnessPanel harness={modelHarness ?? quizTrace?.model_harness ?? null} /> */}
         </aside>
       </div>
     </main>
@@ -426,7 +519,7 @@ function RagMap({ trace, showAllChunks, setShowAllChunks, modelHarness }: { trac
       },
       type: "default"
     }));
-  }, [trace, activeNode, nodeDetails]);
+  }, [trace, activeNode, nodeDetails, modelHarness?.model, modelHarness?.provider]);
 
   const edges = useMemo<Edge[]>(() => {
     const ids = nodes.map((node) => node.id);
@@ -472,27 +565,11 @@ function RagMap({ trace, showAllChunks, setShowAllChunks, modelHarness }: { trac
   );
 }
 
-function DatasetPanel({ trace, chunks, expanded, setExpanded, showAllChunks, setShowAllChunks, quizTrace }: {
+function DatasetPanel({ trace, quizTrace }: {
   trace: DocumentRagTrace | null;
-  chunks: DocumentChunk[];
-  expanded: boolean;
-  setExpanded: (value: boolean) => void;
-  showAllChunks: boolean;
-  setShowAllChunks: (value: boolean) => void;
   quizTrace: QuizJobTrace | null;
 }) {
-  const [chunkSearch, setChunkSearch] = useState("");
   const stats = trace?.dataset_stats;
-  const selectedChunkIds = new Set<string>(quizTrace?.source_pack?.map((s) => String(s.chunk_id ?? "")) ?? []);
-  const filteredChunks = chunkSearch.trim()
-    ? chunks.filter(
-        (chunk) =>
-          chunk.text.toLowerCase().includes(chunkSearch.toLowerCase()) ||
-          String(chunk.chunk_index).includes(chunkSearch) ||
-          String(chunk.page_number ?? "").includes(chunkSearch)
-      )
-    : chunks;
-  const visibleChunks = showAllChunks ? filteredChunks : filteredChunks.slice(0, 8);
   return (
     <div className="audit-grid">
       {/* Section A: stats overview */}
@@ -514,7 +591,7 @@ function DatasetPanel({ trace, chunks, expanded, setExpanded, showAllChunks, set
       </section>
 
       {/* Section B: Chunk browser */}
-      <section className="lab-panel">
+      {/* <section className="lab-panel">
         <div className="panel-title">
           <span>Chunk browser</span>
           <div className="button-row">
@@ -546,7 +623,7 @@ function DatasetPanel({ trace, chunks, expanded, setExpanded, showAllChunks, set
           ))}
           {visibleChunks.length === 0 ? <p className="muted-line">No chunks match this filter.</p> : null}
         </div>
-      </section>
+      </section> */}
 
       {/* Section C: Query trace (shown only after a quiz is generated) */}
       {quizTrace ? (
@@ -581,21 +658,6 @@ function DatasetPanel({ trace, chunks, expanded, setExpanded, showAllChunks, set
   );
 }
 
-function ChunkTable({ chunks, expanded }: { chunks: DocumentChunk[]; expanded: boolean }) {
-  return (
-    <div className="chunk-table">
-      {chunks.map((chunk) => (
-        <div className="chunk-row" key={chunk.id}>
-          <span>#{chunk.chunk_index}</span>
-          <span>p.{chunk.page_number ?? "n/a"}</span>
-          <p>{expanded ? chunk.text : `${chunk.text.slice(0, 180)}${chunk.text.length > 180 ? "..." : ""}`}</p>
-        </div>
-      ))}
-      {chunks.length === 0 ? <p className="muted-line">No chunks available yet.</p> : null}
-    </div>
-  );
-}
-
 function QuizLab(props: {
   ready: boolean;
   busy: boolean;
@@ -620,6 +682,15 @@ function QuizLab(props: {
         <label>Type<select onChange={(event) => props.setQuizType(event.target.value as typeof props.quizType)} value={props.quizType}><option value="mcq">MCQ</option><option value="short_answer">Short answer</option><option value="true_false">True / False</option><option value="mixed">Mixed</option></select></label>
         <button disabled={!props.ready || props.busy} onClick={props.onGenerate} type="button">{props.busy ? "Generating" : "Generate"}</button>
       </div>
+      {props.busy ? (
+        <div className="quiz-loading" role="status" aria-live="polite">
+          <div className="quiz-loading-spinner" />
+          <div>
+            <strong>Generating quiz</strong>
+            <p>Retrieving source chunks, building the prompt, and validating answers.</p>
+          </div>
+        </div>
+      ) : null}
       {props.quiz ? (
         <div className="quiz-stack">
           <div className="panel-title"><span>{props.quiz.title}</span><b>Answers hidden</b></div>
@@ -628,7 +699,7 @@ function QuizLab(props: {
             return (
               <article className="question-card" key={question.question_id}>
                 <strong>{index + 1}. {question.question}</strong>
-                {question.type === "mcq" ? (
+                {question.type === "mcq" || question.type === "true_false" ? (
                   <div className="option-stack">
                     {question.options.map((option) => (
                       <button
@@ -725,22 +796,6 @@ function Timeline({ runs }: { runs: ToolRun[] }) {
   );
 }
 
-function EndpointTrace({ entries }: { entries: EndpointTraceEntry[] }) {
-  return (
-    <InfoCard title="Endpoint Trace">
-      <div className="right-list">
-        {entries.slice(0, 12).map((entry) => (
-          <details className="endpoint-entry" key={entry.id}>
-            <summary>{entry.method} {entry.path} · {entry.status} · {entry.duration_ms}ms</summary>
-            <pre>{JSON.stringify({ purpose: entry.purpose, request: entry.request_preview, response: entry.response_preview }, null, 2)}</pre>
-          </details>
-        ))}
-        {entries.length === 0 ? <p>No frontend calls traced yet.</p> : null}
-      </div>
-    </InfoCard>
-  );
-}
-
 function SecurityPanel({ checks }: { checks?: DocumentRagTrace["security_checks"] | QuizJobTrace["security_checks"] }) {
   const entries = checks ?? {
     pdf_only: true,
@@ -759,14 +814,6 @@ function SecurityPanel({ checks }: { checks?: DocumentRagTrace["security_checks"
           <span key={key}>{value ? "PASS" : "INFO"} {key.replaceAll("_", " ")}</span>
         ))}
       </div>
-    </InfoCard>
-  );
-}
-
-function ModelHarnessPanel({ harness }: { harness: ModelHarness | null }) {
-  return (
-    <InfoCard title="Model Harness">
-      <pre>{JSON.stringify(harness ?? {}, null, 2)}</pre>
     </InfoCard>
   );
 }

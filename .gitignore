@@ -17,3 +17,4 @@ tsconfig.tsbuildinfo
 # Build artifacts / blobs
 secure_rag_learning_api/blobs/
 apps/web/.env.local
+docs/video-showcase-guide.md

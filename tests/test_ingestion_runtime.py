@@ -92,11 +92,12 @@ class IngestionRuntimeTests(TestCase):
         self.assertIn("`${API_BASE_URL}/api/quizzes/generate`", api_client_source)
         self.assertIn("async getQuizGenerationJobDebug", api_client_source)
 
-    def test_ask_tab_not_visible_in_dashboard(self) -> None:
+    def test_legacy_ask_tab_not_visible_but_chat_tab_is_available(self) -> None:
         page_source = Path("apps/web/app/page.tsx").read_text()
 
         self.assertNotIn('["ask", "Ask"]', page_source)
-        self.assertNotIn("<ChatPanel", page_source)
+        self.assertIn('"Chat"', page_source)
+        self.assertIn("<ChatPanel", page_source)
 
     def test_quiz_debug_panel_is_gated_by_frontend_debug_flag(self) -> None:
         panel_source = Path("apps/web/features/quiz/QuizPanel.tsx").read_text()

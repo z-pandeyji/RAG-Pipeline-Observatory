@@ -500,6 +500,42 @@ class QuizGenerationTests(unittest.TestCase):
         answer = service.repository.created["answer_key"]["q1"]
         self.assertEqual(answer["correct_answer"], "Blue")
 
+    def test_legacy_correct_answer_letter_repairs_to_option_index(self) -> None:
+        chunk = retrieved_chunk()
+        service = self.build_service(
+            quiz_json(
+                correct_option_index=None,
+                correct_answer="B",
+                options=["A. Red", "B. Blue", "C. Green"],
+            ),
+            [chunk],
+        )
+
+        asyncio.run(
+            service.generate_from_document_or_query(
+                uuid4(), uuid4(), chunk.document_id, None, 1, "easy", "mcq"
+            )
+        )
+
+        answer = service.repository.created["answer_key"]["q1"]
+        self.assertEqual(answer["correct_answer"], "Blue")
+
+    def test_string_correct_option_index_maps_to_correct_answer(self) -> None:
+        chunk = retrieved_chunk()
+        service = self.build_service(
+            quiz_json(options=["A. Red", "B. Blue", "C. Green"], correct_option_index="1"),
+            [chunk],
+        )
+
+        asyncio.run(
+            service.generate_from_document_or_query(
+                uuid4(), uuid4(), chunk.document_id, None, 1, "easy", "mcq"
+            )
+        )
+
+        answer = service.repository.created["answer_key"]["q1"]
+        self.assertEqual(answer["correct_answer"], "Blue")
+
     def test_legacy_correct_answer_falls_back_when_ambiguous(self) -> None:
         chunk = retrieved_chunk()
         service = self.build_service(
@@ -695,6 +731,8 @@ class QuizGenerationTests(unittest.TestCase):
         self.assertEqual(len(response.quiz.questions), 2)
         stems = [service._normalize_question_stem(question.question) for question in response.quiz.questions]
         self.assertEqual(len(stems), len(set(stems)))
+        question_ids = [question.question_id for question in response.quiz.questions]
+        self.assertEqual(len(question_ids), len(set(question_ids)))
         self.assertTrue(response.job.warnings)
         self.assertIn("Duplicate model-generated questions", response.job.warnings[0])
 

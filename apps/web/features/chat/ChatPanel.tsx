@@ -33,6 +33,7 @@ export function ChatPanel({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const shouldAutoScrollRef = useRef(false);
 
   // Persist messages to localStorage, scoped per workspace+user
   const storageKey = `chat_messages_${workspaceId}_${userId}`;
@@ -51,7 +52,6 @@ export function ChatPanel({
       // Corrupt data — ignore and start fresh
       window.localStorage.removeItem(storageKey);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storageKey]);
 
   // Persist on every change
@@ -65,7 +65,9 @@ export function ChatPanel({
   }, [messages, storageKey]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (!shouldAutoScrollRef.current) return;
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    shouldAutoScrollRef.current = false;
   }, [messages, isLoading]);
 
   async function sendMessage() {
@@ -77,6 +79,7 @@ export function ChatPanel({
       role: "user",
       text: query
     };
+    shouldAutoScrollRef.current = true;
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setIsLoading(true);
@@ -97,6 +100,7 @@ export function ChatPanel({
         citations: response.citations,
         evidenceStatus: response.evidence_status
       };
+      shouldAutoScrollRef.current = true;
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Request failed");
